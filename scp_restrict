@@ -1,0 +1,61 @@
+#!/bin/sh
+#
+if [ -z "${SSH_ORIGINAL_COMMAND}" ]; then
+	exit
+fi
+
+PREFIX=$(realpath "/data/upload")
+
+CMD=""
+PARAMS=""
+STOP="NO"
+
+for ARG in ${SSH_ORIGINAL_COMMAND}; do
+
+	# checking command
+	if [ "${ARG}" = "scp" ]; then
+		if [ -n "${CMD}" ]; then
+			logger "Invalid command: ${ARG}"
+			STOP="YES"
+			break
+		else
+			CMD="${ARG}"
+			continue
+		fi
+	fi
+	
+	#checking options
+	if ( echo "${ARG}" | grep -e '^-[rft]$' > /dev/null ); then
+		if [ -n "${PARAMS}" ]; then
+			logger "Invalid option: ${ARG}"
+			STOP="YES"
+                        break
+		else
+			continue
+		fi
+	fi
+	
+	#checking parameters
+	RPATH=$(realpath -q "${ARG}")
+	if [ $? -gt 0 ]; then
+		echo "Not found: ${ARG}"
+		exit
+	fi
+	if ( echo "${RPATH}" | grep -e "^${PREFIX}\(/\|$\)" > /dev/null ); then
+		continue
+	else
+		logger "Invalid parameter: ${ARG}"
+		STOP="YES"
+                break
+	fi
+	
+done
+
+if [ "${STOP}" = "NO" ]; then
+	${SSH_ORIGINAL_COMMAND}
+else
+	echo "Sorry, your request has one or more wrong destinations and will not be executed."
+	logger "Remote user sent a wrong command [${SSH_ORIGINAL_COMMAND}]:"
+	logger ${SSH_ORIGINAL_COMMAND}
+	exit
+fi
